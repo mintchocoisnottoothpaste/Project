@@ -1,0 +1,91 @@
+---
+title: "Intro and configuration of git / github for R"
+author: "Tim Riffe"
+date: "2022-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Summary
+
+In this short session, we aim to get attendees configured to *push* and *pull* between a local RStudio project and a github repository. We will cover initial setup. I will assume that you have installed `git` and have created a github account.
+
+# Configuration
+
+Two `R` packages with helper functions for getting set up
+```{r, eval = FALSE}
+install.packages("usethis")
+install.packages("credentials")
+```
+
+## generate personal access token in GitHub (`PAT`)
+
+When you run `create_github_token()`, a browser will open. You'll be asked to log into GitHub. Then you'll be brought to a page where PAT permissions can be set with checkboxes. No need to change any of the checkboxes, the default selection here is good. You'll need to select how long you want the PAT to be valid for. After an expiration, you can reset it just as we do here (only 2 steps!). When you accept to generate the token, it will be displayed one and only one time. Copy it to memory (`Ctrl + c`) -- don't save a hard copy.
+```{r, eval = FALSE}
+library(usethis)
+library(credentials)
+
+create_github_token() 
+```
+
+## store the `PAT` locally.
+
+While you still have the PAT in memory, run this function. A box will pop up. Paste the PAT in it `Ctrl + v` and accept.
+```{r, eval = FALSE}
+set_github_pat()
+```
+Now you're ready to work with GitHub repositories from `R`.
+
+# Setup
+
+NOTE: If creating a new project from Rstudio, you can check the box to use git if needed.
+
+## Clone a project from GitHub 
+Cloning means you make a local copy of a repository on GitHub.
+
+Click `File | New Project | Version Control | Git ` and then paste the repo url (`.git`) into the url box, and click `create project`. Then you'll get the whole repo opened in RStudio, and you're ready to start working on it.
+
+Another option, if you are to be collaboraing on a GitHub repository, is to *Fork* it, and then clone *your* fork of the repository. This is my preferred way of collaboration on GitHub.
+
+## Turn an RStudio project into a git repository
+
+Use the helper function `use_git()`. You'll be asked questions in the console. Select NOT to commit all files. Do this deliberately one file at a time later.
+It is best not to commit large or binary files. Keep it to simple and relatively small csv files of data. This is really for the sake of CODE.
+ 
+```{r, eval = FALSE}
+usethis::use_git()
+```
+
+
+## Create a GitHub repository from an RStudio git-controlled project
+
+If you have a local `git` repo without a GitHub remote, you can create one easily:
+```{r, eval = FALSE}
+usethis::use_github()
+```
+
+# General usage advice
+
+1. Commit whenever you make a significant change
+2. leave yourself a USEFUL note
+3. Be deliberate about what you commit
+4. Sync frequently so you can keep a handle on what's going on.
+
+## What to commit
+
+Small text-like things. Meaning Code, Markdown, or not-large csv files. NOT scanned articles or photos.
+
+## When to commit
+
+Whenever you're in doubt, you should commit. Whenever you're at a meaningful position, or after a meaningful change. And leave yourself a useful note when you do. And don't forget to *push* to GitHub now and then.
+
+## When to go public
+
+I think it's low-risk to go public with unfinished work: namely, if you have a git repo, then the fact that this is "your work" is heavily documented! You do however have the option of making a repository *private*. That's something you manage from GitHub.
+
+# Not covered
+
+There will not be time today to cover topics such as branching, merging, pull requests, or managing conflicts. This is really just a set-up guide, that's all.
