@@ -1,0 +1,808 @@
+libname a "/userdata21/rroom042/data_source/user_data/RawData/RAWa";/*RAWDATA_LIVER(BFC, DTH, T20, T30, T40, G1E, G2E, CQ)*/
+libname b "/userdata21/rroom042/data_source/user_data/RawData/RAWb";/*DATA_LIVER(CLV, T60)_updated"*/
+libname c "/userdata21/rroom042/data_source/user_data/CodeReview/data";/*data storage"*/
+
+/*연구대상자 구축 514,095 */
+
+/*T20 ��ġ��*/
+%Macro SET(year)
+%MACRO SUB(start, stop, incr);
+proc sql;
+create table c.t20_&year as
+%DO j= &start %TO &stop %BY &incr; 
+select * from c.obj_2009_t20_&year.0&j union all
+%END; 
+select * from c.obj_2009_t20_&year.09
+order by INDI_DSCM_NO;
+quit;
+%MEND;
+%SUB(1, 8, 1)
+
+%MACRO SUB(start, stop, incr);
+proc sql;
+create table c.t20_&year as
+%DO j= &start %TO &stop %BY &incr; 
+select * from c.obj_2009_t20_&year.&j union all
+%END; 
+select * from c.obj_2009_t20_&year.12
+order by INDI_DSCM_NO;
+quit;
+%MEND;
+%SUB(10, 11, 1)
+%MEND;
+%MACRO DOLIST; %DO j= 2002 %TO 2017 %BY 1; %SET(&j); %END; %MEND; %DOLIST;
+
+
+/*2009�� ���ϰ��������*/
+proc sql;
+create table c.obj_2009 as
+select distinct OBJ
+from b.clv_obj_rst_2009
+order by OBJ;
+quit;
+
+*���νĺ����̵� ������ ����;
+proc sql;
+create table c.obj_2009 as
+select OBJ as INDI_DSCM_NO
+from c.obj_2009;
+quit;
+
+
+
+/*2009�� ���ϰ�������� + 02-17�� ������*/
+%MACRO MERGE(year);
+proc sql;
+create table c.obj_2009_t20_&year as
+select *
+from c.obj_2009 as a  left join c.t20_&year as b
+on a.INDI_DSCM_NO = b.INDI_DSCM_NO;
+quit;
+run;
+%MEND;
+
+%MACRO DOLIST; %DO j=2002 %TO 2017 %BY 1; 
+%MERGE(&j); 
+%END; 
+%MEND; 
+
+%DOLIST;
+
+%MACRO SUB(start, stop, incr);
+proc sql;
+create table c.obj_2009_t20 as
+%DO j= &start %TO &stop %BY &incr; 
+select * from c.obj_2009_t20_&j outer union corresponding
+%END; 
+select * from c.obj_2009_t20_2017
+order by INDI_DSCM_NO;
+quit;
+%MEND;
+%SUB(2002, 2016, 1)
+
+
+*청구번호 없는 건 삭제 4034; 
+proc sql;
+create table c.obj_2009_t20 as
+select * from c.obj_2009_t20 
+where CMN_KEY is not null;
+run;
+
+
+/*간암확진 여부*/
+%MACRO SUB(start, stop, incr);
+%DO i = &start %TO &stop %BY &incr;
+proc sql;
+create table c.obj_2009_t20 as
+select *,
+case 
+when SICK_SYM&i = 'C22%' then 1
+when SPCF_SYM_TYPE in ('V193','V194') then 1
+else  0
+end
+as LVC
+from c.obj_2009_t20;
+quit;
+%END; 
+%MEND;
+%SUB(1, 5, 1)
+
+
+/*exclusion1: 02-09�� ����Ȯ�� ȯ�� ����*/
+data c.exclusion1; set b.obj_2009_t20;
+if LVC= 1 and substr(MDCARE_STRT_DT,1,4) in ('2002','2003','2004','2005','2006','2007','2008','2009');
+run;
+
+proc sort data= c.exclusion1(keep= INDI_DSCM_NO) nodupkey; by INDI_DSCM_NO; run; *02-09�� ����Ȯ�� ȯ��: 12,532��;
+
+data c.cat1;
+merge c.exclusion1(in=a) c.obj_2009_t20;
+by INDI_DSCM_NO;
+if not a;
+run;
+
+proc sort data= c.cat1 out= c.obj(keep= INDI_DSCM_NO) nodupkey; by INDI_DSCM_NO; run; *,;
+
+*��������� �ڰ�/����ڷ� ����;
+proc sort data= a.bfc_2009 out= c.bfc_2009_sort; by INDI_DSCM_NO; run;
+
+data c.obj_info;
+merge c.obj(in=a) c.bfc_2009_sort(in=b);
+by INDI_DSCM_NO;
+if a and b;
+keep INDI_DSCM_NO SEX_TYPE BYEAR YEND_STD_AGE;
+run;
+
+proc sort data= a.dth out= c.dth_sort; by INDI_DSCM_NO; run;
+
+data c.obj_info;
+merge c.obj_info(in=a) c.dth_sort;
+by INDI_DSCM_NO;
+if a;
+run;
+
+data c.obj_info2; set c.obj_info; 
+if DTH_ASSMD_DT ^= ' ' and DTH_ASSMD_DT < '20090101' then delete;
+run;
+
+proc sort data= c.obj_info2 out= c.sub_id(keep= INDI_DSCM_NO) nodupkey; by INDI_DSCM_NO; run; * 514,095;
+
+
+%MACRO MERGE(year);
+proc sql;
+create table c.sub_2009_t20_&year as
+select *
+from c.sub_id as a  left join c.t20_&year as b
+on a.INDI_DSCM_NO = b.INDI_DSCM_NO;
+quit;
+run;
+%MEND;
+
+%MACRO DOLIST; %DO j=2002 %TO 2017 %BY 1; 
+%MERGE(&j); 
+%END; 
+%MEND; 
+
+%DOLIST;
+
+%MACRO SUB(start, stop, incr);
+proc sql;
+create table c.sub_2009_t20 as
+%DO j= &start %TO &stop %BY &incr; 
+select * from c.sub_2009_t20_&j outer union corresponding
+%END; 
+select * from c.sub_2009_t20_2017
+order by INDI_DSCM_NO;
+quit;
+%MEND;
+%SUB(2002, 2016, 1)
+
+proc sql;
+create table c.sub_2009_t20 as
+select * from c.sub_2009_t20 
+where CMN_KEY is not null;
+run;
+
+
+/*간암확진 여부*/
+%MACRO SUB(start, stop, incr);
+%DO i = &start %TO &stop %BY &incr;
+proc sql;
+create table c.cat1 as
+select *,
+case 
+when SICK_SYM&i = 'C22%' then 1
+when SPCF_SYM_TYPE in ('V193','V194') then 1
+else  0
+end
+as LVC
+from c.sub_2009_t20;
+quit;
+%END; 
+%MEND;
+%SUB(1, 5, 1)
+
+
+proc sql;
+crate table c.lvc_dt as
+select distinct(INDI_DSCM_NO) MDCARE_STRT_DT
+from c.cat1
+where MDCARE_STRT_DT is not null and LVC=1
+order by INDI_DSCM_NO MDCARE_STRT_DT;
+
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+
+data c.cat1; set c.cat1;
+if SICK_SYM1 in ('K74','K741','K742','K746','K76','K702','K703','K709') or
+SICK_SYM2 in ('K74','K741','K742','K746','K76','K702','K703','K709') or
+SICK_SYM3 in ('K74','K741','K742','K746','K76','K702','K703','K709') or
+SICK_SYM4 in ('K74','K741','K742','K746','K76','K702','K703','K709') or
+SICK_SYM5 in ('K74','K741','K742','K746','K76','K702','K703','K709') then Cirrhosis= 1;
+else Cirrhosis= 0;
+
+
+*B�� �������̷��� �׿� �缺, C�� �������̷��� ��ü �缺;
+if SICK_SYM1 in ('B18','B180','B181','B182','Z225') or
+SICK_SYM2 in ('B18','B180','B181','B182','Z225') or
+SICK_SYM3 in ('B18','B180','B181','B182','Z225') or
+SICK_SYM4 in ('B18','B180','B181','B182','Z225') or
+SICK_SYM5 in ('B18','B180','B181','B182','Z225') then Hepatitis= 1;
+else Hepatitis= 0;
+
+*B�� �������̷��� �׿� �缺, C�� �������̷��� ��ü �缺;
+if SICK_SYM1 in ('B180','B181') or
+SICK_SYM2 in ('B180','B181') or
+SICK_SYM3 in ('B180','B181') or
+SICK_SYM4 in ('B180','B181') or
+SICK_SYM5 in ('B180','B181') then Hepatitis_B= 1;
+else Hepatitis_B= 0;
+
+*B�� �������̷��� �׿� �缺, C�� �������̷��� ��ü �缺;
+if SICK_SYM1 in ('B182') or
+SICK_SYM2 in ('B182') or
+SICK_SYM3 in ('B182') or
+SICK_SYM4 in ('B182') or
+SICK_SYM5 in ('B182') then Hepatitis_C= 1;
+else Hepatitis_C= 0;
+
+
+if Hepatitis_B = 1 and Hepatitis_C then Coinfeciton =1;
+else Coinfeciton =1;
+
+*B�� �Ǵ� C�� �������̷����� ���� ���� ����ȯ ȯ��;
+if SICK_SYM1 in ('K73','K731','K732','K738','K739','B19') or
+SICK_SYM2 in ('K73','K731','K732','K738','K739','B19') or
+SICK_SYM3 in ('K73','K731','K732','K738','K739','B19') or
+SICK_SYM4 in ('K73','K731','K732','K738','K739','B19') or
+SICK_SYM5 in ('K73','K731','K732','K738','K739','B19') then Others= 1;
+else Others= 0;
+run;
+
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+
+
+proc sql;
+create table c.cirrhosis as
+select distinct(INDI_DSCM_NO), Cirrhosis
+from c.cat1
+where substr(MDCARE_STRT_DT,1,4) in ('2007','2008','2009') and Cirrhosis = 1;
+run;
+
+proc sql;
+create table c.hepatitis as
+select distinct(INDI_DSCM_NO), Hepatitis
+from c.cat1
+where substr(MDCARE_STRT_DT,1,4) in ('2007','2008','2009') and Hepatitis = 1;
+run;
+
+proc sql;
+create table c.hepatitis_b as
+select distinct(INDI_DSCM_NO), Hepatitis_B
+from c.cat1
+where substr(MDCARE_STRT_DT,1,4) in ('2007','2008','2009') and Hepatitis_B = 1;
+run;
+
+proc sql;
+create table c.hepatitis_c as
+select distinct(INDI_DSCM_NO), Hepatitis_C
+from c.cat1
+where substr(MDCARE_STRT_DT,1,4) in ('2007','2008','2009') and Hepatitis_C = 1;
+run;
+
+proc sql;
+create table c.hepatitis_co as
+select distinct(INDI_DSCM_NO), Coinfection
+from c.cat1
+where substr(MDCARE_STRT_DT,1,4) in ('2007','2008','2009') and Coinfection = 1;
+run;
+
+proc sql;
+create table c.others as
+select distinct(INDI_DSCM_NO), Others
+from c.cat1
+where substr(MDCARE_STRT_DT,1,4) in ('2007','2008','2009') and Others = 1;
+run;
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+proc sort data= b.cat1 out= c.obj(keep= INDI_DSCM_NO) nodupkey; by INDI_DSCM_NO; run; 
+
+%MACRO SORT(year);
+proc sort data= c.clv_obj_rst_&year out= c.clv_&year._sort; by INDI_DSCM_NO; run;
+%MEND;
+%MACRO DOLIST; %DO j= 2002 %TO 2017 %BY 1; %SORT(&j); %END; %MEND; %DOLIST;
+
+%MACRO MERGE(year);
+data c.obj_clv_&year;
+merge c.obj(in=a) c.clv_&year._sort;
+by INDI_DSCM_NO;
+if a;
+run;
+%MEND;
+%MACRO DOLIST; %DO j= 2002 %TO 2017 %BY 1; %MERGE(&j); %END; %MEND; %DOLIST;
+
+data c.obj_clv;
+set c.obj_clv_2002 c.obj_clv_2003 c.obj_clv_2004 c.obj_clv_2005 c.obj_clv_2006 c.obj_clv_2007 c.obj_clv_2008 c.obj_clv_2009 
+c.obj_clv_2010 c.obj_clv_2011 c.obj_clv_2012 c.obj_clv_2013 c.obj_clv_2014 c.obj_clv_2015 c.obj_clv_2016 c.obj_clv_2017;
+by INDI_DSCM_NO;
+run;
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+
+data c.obj_clv; set c.obj_clv;
+*초음파: 간초음파 검사 관찰소견 3개 중 하나라도 간암의심인 경우;
+if CLV_US1_DZ_FND= 6 or
+CLV_US2_DZ_FND= 6 or
+CLV_US3_DZ_FND= 6 then US= 1;
+else US= 0;
+
+*AFP: 정성법 양성으로 정의, 정량법 기준치보다 큰 경우;
+if CLV_AFP_QUAL_RST= 2 or
+CLV_AFP_QUAN_AMT > CLV_AFP_QUAN_STD then AFP= 1;
+else AFP= 0;
+run;
+
+data c.sub_obj_clv;
+merge c.obj_clv(in=a) c.cat1;
+by INDI_DSCM_NO;
+if a;
+run;
+
+/*간암 양성판정 여부(초음파/AFP/간암상병코드) 변수 생성*/
+data c.sub_obj_clv; set c.sub_obj_clv;
+if US= 1 or AFP= 1 or LVC= 1 then exm= 'Positive';
+else exm= 'Negative';
+if OBJ= ' ' then delete;
+run;
+
+/*검진결과 변수 생성*/
+data c.sub_obj_clv_var; set b.sub_obj_clv;
+keep INDI_DSCM_NO HME_DT US AFP LVC exm;
+run;
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+/*1차 일반검진*/
+%MACRO SORT(year);
+proc sort data= a.g1eq_&year out= c.g1e_&year._sort; by INDI_DSCM_NO; run;
+%MEND;
+%MACRO DOLIST; %DO j= 2002 %TO 2017 %BY 1; %SORT(&j) %END; %MEND; %DOLIST;
+
+%MACRO MERGE(year);
+data c.obj_g1e_&year;
+merge c.obj(in=a) c.g1e_&year._sort;
+by INDI_DSCM_NO;
+if a;
+run;
+%MEND;
+%MACRO DOLIST; %DO j= 2009 %TO 2017 %BY 1; %MERGE(&j) %END; %MEND; %DOLIST;
+
+data c.obj_g1e;
+set c.obj_g1e_2002 c.obj_g1e_2003 c.obj_g1e_2004 c.obj_g1e_2005 c.obj_g1e_2006 c.obj_g1e_2007 c.obj_g1e_2008 c.obj_g1e_2009 
+c.obj_g1e_2010 c.obj_g1e_2011 c.obj_g1e_2012 c.obj_g1e_2013 c.obj_g1e_2014 c.obj_g1e_2015 c.obj_g1e_2016 c.obj_g1e_2017;
+by INDI_DSCM_NO;
+run;
+
+*Diabetes Mellitus;
+data c.cov_dm set b.cat1;
+if substr(SICK_SYM1,1,3) in ('E10','E11','E12','E13','E14') or
+substr(SICK_SYM2,1,3) in ('E10','E11','E12','E13','E14') or
+substr(SICK_SYM3,1,3) in ('E10','E11','E12','E13','E14') or
+substr(SICK_SYM4,1,3) in ('E10','E11','E12','E13','E14') or
+substr(SICK_SYM5,1,3) in ('E10','E11','E12','E13','E14') then DM= 1;
+else DM= 0;
+MDCARE_YR= substr(MDCARE_STRT_DT,1,4);
+run;
+proc sort data= c.cov_dm; by INDI_DSCM_NO MDCARE_YR; run;
+
+
+*Fatty Liver Disease;
+data c.cov_fld; set c.obj_g1e;
+keep INDI_DSCM_NO HME_DT G1E_TG G1E_BMI G1E_GGT G1E_WSTC;
+if HME_DT ^= ' ';
+run;
+
+proc sort data= c.cov_fld; by INDI_DSCM_NO HME_DT; run;
+
+
+data c.cov_fld; set c.cov_fld;
+if 100/(1+EXP(-(0.953 * log(G1E_TG) + 0.139 * G1E_BMI + 0.718 * log(G1E_GGT) + 0.053 * G1E_WSTC -15.745))) >=60 
+then FLD = 2;
+
+if 100/(1+EXP(-(0.953 * log(G1E_TG) + 0.139 * G1E_BMI + 0.718 * log(G1E_GGT) + 0.053 * G1E_WSTC -15.745)))<60 and 
+100/(1+EXP(-(0.953 * log(G1E_TG) + 0.139 * G1E_BMI + 0.718 * log(G1E_GGT) + 0.053 * G1E_WSTC -15.745)))>=30
+then FLD = 1;
+
+else if 100/(1+EXP(-(0.953 * log(G1E_TG) + 0.139 * G1E_BMI + 0.718 * log(G1E_GGT) + 0.053 * G1E_WSTC -15.745)))< 30 
+then FLD = 0;
+HME_YR= substr(HME_DT,1,4);
+run;
+
+
+*2019.07.24 : �索��, ���氣 ���� ����;
+*-----------------------------------------------;
+data c.dm; set c.cov_dm;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+if DM= 1;
+run;
+
+proc sort data= c.dm(keep= INDI_DSCM_NO DM) nodupkey; by INDI_DSCM_NO; run;
+
+data c.fld; set c.cov_fld;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+if FLD= 1;
+run;
+
+proc sort data= c.fld(keep= INDI_DSCM_NO FLD) nodupkey; by INDI_DSCM_NO; run; 
+
+
+*-----------------------------------------------;
+*-----------------------------------------------;
+*-----------------------------------------------;
+
+
+*Covariates2: ����(G1E-Q_DRK_FRQ_V09N, Q_DRK_AMT_V09N), ��(G1E-G1E_BMI);
+
+
+data c.alc_obe; set c.obj_g1e;
+keep INDI_DSCM_NO HME_DT Q_DRK_FRQ_V09N Q_DRK_AMT_V09N G1E_BMI;
+if HME_DT ^= ' ';
+run;
+
+proc sort data= b.alc_obe; by INDI_DSCM_NO HME_DT; run;
+
+data c.alc_obe; set c.alc_obe;
+*Alcohol;
+if Q_DRK_FRQ_V09N > 0 or Q_DRK_AMT_V09N > 0 then ALC= 1;
+else if Q_DRK_FRQ_V09N ^= . or Q_DRK_AMT_V09N ^= . then ALC= 0;
+*Obesity;
+if G1E_BMI >= 25 then OBE= 1;
+else if G1E_BMI ^= . then OBE= 0;
+HME_YR= substr(HME_DT,1,4);
+run;
+
+*2019.07.24 : ����, �� ���� ����;
+*2019.08.01 : ACL= 0, OBE= 0�� ����(����ġ ������ Ȯ�� �ʿ�);
+*2019.09.24 : 4���⵵(2009-2012) �Ϲݰ��� ��� ��� Ȯ��;
+*-----------------------------------------------;
+*ALC= 1�� ���;
+data c.alcohol_1; set c.alc_obe;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+if ALC=1;
+run;
+proc sort data= c.alcohol_1(keep= INDI_DSCM_NO HME_YR ALC) nodupkey; by INDI_DSCM_NO; run;
+
+*ALC= 0�� ���;
+data c.alcohol_0;
+merge c.alc_obe(in=a) c.alcohol_1(in=b);
+by INDI_DSCM_NO;
+if not b;
+if HME_YR in (('2002','2003','2004','2005','2006','2007','2008','2009');
+run;
+proc sort data= c.alcohol_0(keep= INDI_DSCM_NO HME_YR ALC) nodupkey; by INDI_DSCM_NO; run;
+
+data c.alcohol;
+merge c.alcohol_1 c.alcohol_0;
+by INDI_DSCM_NO;
+run;
+
+*OBE= 1�� ���;
+data c.obesity_1; set c.alc_obe;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+if OBE=1;
+run;
+proc sort data= c.obesity_1(keep= INDI_DSCM_NO HME_YR OBE) nodupkey; by INDI_DSCM_NO; run;
+
+*OBE= 0�� ���;
+data c.obesity_0;
+merge c.alc_obe(in=a) c.obesity_1(in=b);
+by INDI_DSCM_NO;
+if not b;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+run;
+proc sort data= c.obesity_0(keep= INDI_DSCM_NO HME_YR OBE) nodupkey; by INDI_DSCM_NO; run;
+
+data c.obesity;
+merge c.obesity_1 c.obesity_0;
+by INDI_DSCM_NO;
+run;
+
+*2021.4.12 : ������, ���� ���� ����,4���⵵(2009-2012) �Ϲݰ��� ��� ��� Ȯ��;
+*-----------------------------------------------;
+*-----------------------------------------------;
+*-----------------------------------------------;
+
+* *Family History;
+* data c.cov_family; set c.obj_g1e;
+* keep INDI_DSCM_NO HME_DT  ;
+* if HME_DT ^= ' ';
+* run;
+* proc sort data= b.cov_family; by INDI_DSCM_NO HME_DT; run;
+
+* data c.cov_family; set c.cov_fmaily;
+* if QC_ =1 or QC_ = 1 then FAMILY= 1;
+* else if QC_ ^= . or QC_ ^= . then FAMILY= 0;
+* run;
+ 
+* *FH= 1 �� ���;
+* data c.fh_1; set c.cov3_1;
+* if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+* if FH=1;
+* run;
+* proc sort data= c.fh_1(keep= INDI_DSCM_NO HME_YR FH) nodupkey; by INDI_DSCM_NO; run;
+
+* *FH= 0�� ���;
+* data c.fh_0;
+* merge c.cov3_1(in=a) c.fh_1(in=b);
+* by INDI_DSCM_NO;
+* if not b;
+* if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+* run;
+* proc sort data= c.fh_0(keep= INDI_DSCM_NO HME_YR ALC) nodupkey; by INDI_DSCM_NO; run;
+
+* data c.fh;
+* merge c.fh_1 c.fh_0;
+* by INDI_DSCM_NO;
+* run;
+
+* *Smoking;
+* data c.cov_smk; set c.obj_g1e;
+/* Keep INDI_DSCM_NO HME_DT Q_SMK_YN; /*Q_SMK_NOW_DRT,Q_SMK_PRE_DRT Q_SMK_NOW_AMT_V09N Q_SMK_PRE_AMT;*/
+* if HME_DT ^= ' ';
+* run;
+
+* proc sort data= c.cov_smk; by INDI_DSCM_NO HME_DT; run;
+
+/*standard  pack/year  */
+
+/* data c.cov_smk; set c.cov_smk;
+/* if (Q_SMK_NOW_AMT_V09N/20) * Q_SMK_NOW_DRT 
+* if (Q_SMK_NOW_AMT_V09N/20) * Q_SMK_NOW_DRT 
+* if Q_SMK_YN = 2 or Q_SMK_YN =3 or Q_SMK_NOW_DRT >0 or Q_SMK_PRE_DRT <5 then SMK= 1;
+* else if Q_SMK_YN = 1 or Q_SMK_YN ^= . or Q_SMK_NOW_DRT ^= . or  Q_SMK_PRE_DRT ^= . then SMK= 0;
+* run;
+
+/* smoking presence or absence  */
+
+data c.cov_smk; set c.cov_smk;
+if Q_SMK_YN  = 2 or Q_SMK_YN = 3 then SMK= 1;
+else if Q_SMK_YN ^= . or Q_SMK_YN = 1 then SMK= 0;
+HME_YR= substr(HME_DT,1,4);
+run;
+
+*SMK= 1�� ���;
+data c.smk_1; set c.cov_smk;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+if FH=1;
+run;
+proc sort data= c.smk_1(keep= INDI_DSCM_NO HME_YR SMK) nodupkey; by INDI_DSCM_NO; run;
+
+*SMK= 0�� ���;
+data c.smk_0;
+merge c.cov3_2(in=a) c.smk_1(in=b);
+by INDI_DSCM_NO;
+if not b;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+run;
+
+proc sort data= c.smk_0(keep= INDI_DSCM_NO HME_YR SMK) nodupkey; by INDI_DSCM_NO; run;
+
+data c.smk;
+merge c.smk_1 c.smk_0;
+by INDI_DSCM_NO;
+run;
+
+*Covariates4: SGPT,SGOP;
+
+data c.cov_blood; set c.obj_g1e;
+keep INDI_DSCM_NO HME_DT G1E_SGPT G1E_SGOT ;
+if HME_DT ^= ' ';
+run;
+proc sort data= b.cov_blood; by INDI_DSCM_NO HME_DT; run;
+
+data c.cov_blood; set c.cov_blood;
+if G1E_SGPT  > 40 and G1E_SGOT > 40 then BLD= 1;
+else if G1E_SGPT ^= . or G1E_SGOT ^= . then BLD= 0;
+run;
+
+data c.blood_1; set c.cov_blood;
+if HME_YR in ('2002','2003','2004','2005','2006','2007','2008','2009');
+if ALC=1;
+run;
+proc sort data= c.blood_1(keep= INDI_DSCM_NO HME_YR BLD) nodupkey; by INDI_DSCM_NO; run;
+
+*ALC= 0�� ���;
+data c.blood_0;
+merge c.alc_obe(in=a) c.blood_1(in=b);
+by INDI_DSCM_NO;
+if not b;
+if HME_YR in (('2002','2003','2004','2005','2006','2007','2008','2009');
+run;
+proc sort data= c.blood_0(keep= INDI_DSCM_NO HME_YR BLD) nodupkey; by INDI_DSCM_NO; run;
+
+data c.blood;
+merge c.blood_1 c.blood_0;
+by INDI_DSCM_NO;
+run;
+
+*--------------------------------------------------------------------------------------------------------;
+*--------------------------------------------------------------------------------------------------------;
+*--------------------------------------------------------------------------------------------------------;
+
+data c.first_study_data;
+merge c.cat1(in=a) c.cirrhosis c.hepatitis c.hepatitis_b c.hepatitis_c 
+c.others  c.hepatitis_co c.dm c.fld_e c.alc c.obe c.smk c.blood c.lvc_dt;
+by INDI_DSCM_NO;
+if a;
+run;
+
+*변수정리;
+proc contents data= b.first_e varnum; run;
+
+data b.first_e;
+retain INDI_DSCM_NO YEAR SEX_TYPE YEND_STD_AGE Cirrhosis Hepatitis Hepatitis_B Hepatitis_C Coinfection Others DM FLD ALC OBE SMK BLD MDCARE_STRT_DT DTH_ASSMD_DT HME_DT;
+set b.first_e;
+rename INDI_DSCM_NO= PAT_ID SEX_TYPE= SEX YEND_STD_AGE= AGE MDCARE_STRT_DT= FDX_DT DTH_ASSMD_DT= DTH_DT;
+drop BYEAR;
+run;
+
+*레이블 정리;
+data b.first; set b.first;
+label PAT_ID= PAT_ID SEX= SEX AGE= AGE FDX_DT= FDX_DT DTH_DT= DTH_DT;
+run;
+
+*transition되는 시점 계산;
+data b.year; set b.first;
+y1= '2009';
+m1= '01';
+d1= '01';
+mdy1= mdy(m1,d1,y1);
+
+y2= substr(HME_DT,1,4);
+m3= substr(HME_DT,5,2);
+d2= substr(HME_DT,7,2);
+mdy2= mdy(m3,d3,y3);
+
+y3= substr(FDX_DT,1,4);
+m3= substr(FDX_DT,5,2);
+d3= substr(FDX_DT,7,2);
+mdy3= mdy(m3,d3,y3);
+
+y4= substr(DTH_DT,1,4);
+m4= substr(DTH_DT,5,2);
+d4= substr(DTH_DT,7,2);
+mdy4= mdy(m4,d4,y4);
+
+/* interval = month */
+DATE1= 0;
+DATE2= 12 * (mdy2-mdy1)/365.25;
+DATE3= 12 * (mdy3-mdy1)/365.25;
+DATE4= 12 * (mdy4-mdy1)/365.25;
+
+keep PAT_ID DATE1 DATE2 DATE3 DATE4;
+run;
+
+*panel data 형태로 가공;
+proc transpose data= b.data name= State prefix= date out= b.date2;
+by PAT_ID;
+run;
+
+data b.state; set b.date2;
+if State= 'DATE1' then State= 1;
+else if State= 'DATE2' then State= 2;
+else if State= 'DATE3' then State= 3;
+else if State= 'DATE4' then State= 4;
+rename DATE1= DATE;
+label State= State;
+run;
+
+*transition에 해당하지 않는 행은 삭제;
+data b.state;
+retain PAT_ID DATE State;
+set b.state;
+if DATE= . then delete;
+run;
+
+/*studydata 완성*/
+data b.studydata;
+merge b.first b.state;
+by PAT_ID;
+run;
+
+* covariates 결측치 처리;
+data b.studydata; set b.studydata;
+if Cirrhosis= ' ' then Cirrhosis= 0;
+if Hepatitis= ' ' then Hepatitis= 0;
+if Hepatitis_B= ' ' then Hepatitis_B= 0;
+if Hepatitis_C= ' ' then Hepatitis_C= 0;
+if Coinfection= ' ' then Coinfection= 0;
+if Others= ' ' then Others= 0;
+if DM= ' ' then DM= 0;
+if FLD= ' ' then FLD= 0;
+if ALC= ' ' then ALC= 0;
+if OBE= ' ' then OBE= 0;
+if SMK= ' ' then SMK= 0;
+if BLD= ' ' then BLD= 0;
+run;
+
+*--------------------------------------------------------------------------------------------------------;
+*--------------------------------------------------------------------------------------------------------;
+
+*2)간암확진일자와 사망일자가 동일한 경우, 간암확진을 30일 이전으로 조정(날짜차이 계산 후 바로 적용);
+data b.studydata2; set b.studydata;
+if State= 2 and FDX_DT ^= ' ' and DTH_DT ^= ' ' and FDX_DT = DTH_DT then DATE= DATE - (30 * 12/365.25);
+run;
+
+*3)Transition에 대한 정보가 없는 대상자(계속 State1인 경우);
+data state1_2010; set b.studydata2;
+if FDX_DT= ' ' and DTH_DT= ' ';
+run;
+
+proc sql;
+create table state1 as select * from state1_2010;
+update state1 set YEAR= 9;
+quit;
+
+*State2에 계속 머무는 경우;
+data state2_2010; set b.studydata2;
+if State= 2 and DTH_DT= ' ';
+run;
+
+proc sql;
+create table state2_e as select * from state2_2010;
+update state2 set YEAR= 9;
+quit;
+
+*State3에 계속 머무는 경우;
+data state3_2010; set b.studydata2;
+if State= 3 and DTH_DT= ' ';
+run;
+
+proc sql;
+create table state3 as select * from state3_2010;
+update state3 set YEAR= 9;
+quit;
+
+*Transition이 있는 대상자와 병합;
+data b.studydata3_e;
+set b.studydata2 state1 state2 state3;
+by PAT_ID;
+run;
+
+*--------------------------------------------------------------------------------------------------------;
+*--------------------------------------------------------------------------------------------------------;
+*Descriptive*/
+
+*연구대상자;
+proc contents data= b.studydata3_e varnum; run;
+proc sort data= b.studydata3_e out= studydata3_nodup_e nodupkey; by PAT_ID; run;
+proc contents data= studydata3_nodup_e varnum; run; *;
+
+*covariates;
+proc freq data= studydata3_nodup_e; tables SEX; run;
+proc means data= studydata3_nodup_e n median q1 q3 qrange min max maxdec= 1; var AGE; run;
+proc freq data= studydata3_nodup_e; tables Cirrhosis Hepatitis Others; run;
+proc freq data= studydata3_nodup_e; tables Hepatitis_B Hepatitis_C Coinfection; run;
+proc freq data= studydata3_nodup_e; tables DM FLD; run;
+proc freq data= studydata3_nodup_e; tables SMK BLD; run;
+proc freq data= studydata3_nodup_e; tables ALC OBE; run;
+proc freq data= studydata3_nodup_e; tables SEX; where Cirrhosis=1 or Hepatitis=1 or Others=1; run;
+proc freq data= studydata3_nodup_e; tables ALC*OBE / nocol norow nopercent; run;
+
+*--------------------------------------------------------------------------------------------------------;
+*--------------------------------------------------------------------------------------------------------;
